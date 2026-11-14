@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Security Gateway - Prompt Injection Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="navbar">
+    <div class="nav-brand">
+      <span class="shield-icon">🛡️</span>
+      <h1>Prompt Injection Security Gateway</h1>
+    </div>
+    <div class="nav-status">
+      <span class="status-indicator online"></span>
+      <span id="gateway-status">Gateway Online</span>
+      <span class="badge" id="gateway-version">v0.1.0</span>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Configuration Banner -->
+    <section class="card config-card">
+      <div class="card-header">
+        <h2>System Configuration</h2>
+        <span class="subtext">Non-secret server policy and operational limits</span>
+      </div>
+      <div class="config-grid">
+        <div class="config-item">
+          <label>Enforced Policy</label>
+          <span class="config-value badge-policy" id="cfg-policy">Loading...</span>
+        </div>
+        <div class="config-item">
+          <label>Active Provider</label>
+          <span class="config-value" id="cfg-provider">Loading...</span>
+        </div>
+        <div class="config-item">
+          <label>Risk Thresholds</label>
+          <span class="config-value" id="cfg-thresholds">L:30 | M:60 | H:80</span>
+        </div>
+        <div class="config-item">
+          <label>Max Message Size</label>
+          <span class="config-value" id="cfg-limits">10,000 chars</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Metrics Cards -->
+    <section class="metrics-grid">
+      <div class="metric-card total">
+        <div class="metric-title">Total Requests</div>
+        <div class="metric-value" id="metric-total">0</div>
+        <div class="metric-desc">Scanned inputs</div>
+      </div>
+      <div class="metric-card allowed">
+        <div class="metric-title">Allowed</div>
+        <div class="metric-value" id="metric-allowed">0</div>
+        <div class="metric-desc">Passed security check</div>
+      </div>
+      <div class="metric-card held">
+        <div class="metric-title">Held For Review</div>
+        <div class="metric-value" id="metric-held">0</div>
+        <div class="metric-desc">FLAG or moderate threat</div>
+      </div>
+      <div class="metric-card rejected">
+        <div class="metric-title">Rejected / Blocked</div>
+        <div class="metric-value" id="metric-rejected">0</div>
+        <div class="metric-desc">Critical injection risk</div>
+      </div>
+      <div class="metric-card provider">
+        <div class="metric-title">Provider Invocations</div>
+        <div class="metric-value" id="metric-provider">0</div>
+        <div class="metric-desc">LLM calls made</div>
+      </div>
+    </section>
+
+    <!-- Interactive Safe Scan Testing Console -->
+    <section class="card scan-console-card">
+      <div class="card-header">
+        <h2>Live Security Scan Console</h2>
+        <span class="subtext">Safely test direct and indirect prompt injection detection</span>
+      </div>
+
+      <div class="scan-presets">
+        <span>Quick Samples:</span>
+        <button class="btn btn-secondary preset-btn" onclick="loadSample('benign')">Benign Prompt</button>
+        <button class="btn btn-secondary preset-btn" onclick="loadSample('direct')">Direct Attack (DAN / Override)</button>
+        <button class="btn btn-secondary preset-btn" onclick="loadSample('indirect')">Indirect Attack (Retrieved Doc)</button>
+        <button class="btn btn-secondary preset-btn" onclick="loadSample('exfil')">Sensitive Data Exfiltration</button>
+      </div>
+
+      <form id="scan-form" onsubmit="handleScan(event)">
+        <div class="form-group">
+          <label for="user-message">Direct User Message (Untrusted Input):</label>
+          <textarea id="user-message" rows="3" placeholder="Enter message to scan..." required></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="retrieved-content">Retrieved Content (Optional - Indirect Context from Web, PDF, Email):</label>
+          <textarea id="retrieved-content" rows="3" placeholder="Enter extracted document or webpage text..."></textarea>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" id="btn-scan">
+            <span>Scan Prompt</span>
+          </button>
+          <button type="button" class="btn btn-secondary" onclick="clearScanForm()">Clear</button>
+        </div>
+      </form>
+
+      <!-- Scan Result Display -->
+      <div id="scan-result" class="scan-result-container" style="display: none;">
+        <div class="result-header">
+          <h3>Scan Outcome</h3>
+          <span class="badge" id="res-request-id">REQ-00000000</span>
+        </div>
+
+        <div class="result-summary-grid">
+          <div class="result-metric">
+            <span class="lbl">Risk Score</span>
+            <div class="score-display" id="res-risk-score">0 / 100</div>
+          </div>
+          <div class="result-metric">
+            <span class="lbl">Risk Classification</span>
+            <div class="badge" id="res-risk-level">LOW</div>
+          </div>
+          <div class="result-metric">
+            <span class="lbl">Policy Decision</span>
+            <div class="badge" id="res-decision">ALLOWED</div>
+          </div>
+          <div class="result-metric">
+            <span class="lbl">Provider Forwarded</span>
+            <div class="badge" id="res-provider-called">NO</div>
+          </div>
+        </div>
+
+        <div id="findings-section" class="findings-section">
+          <h4>Detected Indicators (<span id="res-findings-count">0</span>):</h4>
+          <div id="findings-list" class="findings-list">
+            <p class="no-findings">No security threats detected.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Recent Audit Logs Table -->
+    <section class="card logs-card">
+      <div class="card-header logs-header">
+        <div>
+          <h2>Security Audit Logs</h2>
+          <span class="subtext">Privacy-conscious event audit log (No raw prompt text stored)</span>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="loadAuditData()">↻ Refresh Logs</button>
+      </div>
+
+      <div class="table-responsive">
+        <table class="logs-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Timestamp (UTC)</th>
+              <th>Request ID</th>
+              <th>Sources</th>
+              <th>Score</th>
+              <th>Risk Level</th>
+              <th>Policy</th>
+              <th>Decision</th>
+              <th>Findings</th>
+              <th>LLM Called</th>
+            </tr>
+          </thead>
+          <tbody id="logs-tbody">
+            <tr><td colspan="10" class="text-center">Loading audit events...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pagination-controls">
+        <button class="btn btn-secondary btn-sm" id="btn-prev" onclick="changePage(-1)">← Previous</button>
+        <span id="page-info">Page 1</span>
+        <button class="btn btn-secondary btn-sm" id="btn-next" onclick="changePage(1)">Next →</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Prompt Injection Security Gateway MVP &bull; Built with FastAPI, SQLite, and Python &bull; <a href="/docs" target="_blank">Interactive API Docs (/docs)</a></p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
